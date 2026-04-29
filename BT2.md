@@ -347,15 +347,180 @@ BEGIN
     AND (SELECT SUM([SoLuong]) FROM [HoaDonChiTiet] WHERE [MaSanPham] IN (SELECT [MaSanPham] FROM inserted)) > 100;
 END;
 ```
-<img width="1920" height="1080" alt="Screenshot (57)" src="https://github.com/user-attachments/assets/b5de201f-7bdb-4c64-ba9f-d88de4a97586" />
+<img width="1920" height="1080" alt="Screenshot (57)" src="https://github.com/user-attachments/assets/2dc340fb-f765-49ac-b40f-7e3f0db9e27c" />
+
 
 _Lệnh đã được thực hiện thành công_
 
+## 4.2. Thử nghiệm Trigger vòng lặp
 
+-Viết Trigger cho Bảng A (SanPham)
 
+Khi chèn một sản phẩm mới, tự động cập nhật một ghi chú vào tên của Loại sản phẩm tương ứng ở Bảng B
+```
+CREATE TRIGGER [trg_A_to_B]
+ON [SanPham]
+AFTER INSERT
+AS
+BEGIN
+    UPDATE [LoaiSanPham]
+    SET [TenLoai] = [TenLoai] + N' (Updated)'
+    WHERE [MaLoai] IN (SELECT [MaLoai] FROM inserted);
+END;
+GO
+```
+<img width="1920" height="1080" alt="Screenshot (59)" src="https://github.com/user-attachments/assets/5a801285-71bc-4ca6-84f1-f62eea795b00" />
 
+_Tạo thành công bảng Trigger A_
 
+- Viết Trigger cho Bảng B (LoaiSanPham)
 
+Khi Bảng B được cập nhật tên, tự động cập nhật lại trạng thái của các Sản phẩm thuộc loại đó ở Bảng A
+```
+CREATE TRIGGER [trg_B_to_A]
+ON [LoaiSanPham]
+AFTER UPDATE
+AS
+BEGIN
+    UPDATE [SanPham]
+    SET [TrangThai] = 1
+    WHERE [MaLoai] IN (SELECT [MaLoai] FROM inserted);
+END;
+GO
+```
+<img width="1920" height="1080" alt="Screenshot (60)" src="https://github.com/user-attachments/assets/a7591053-54b8-4f26-82a1-dfd9e5b0d690" />
+
+_Tạo thành công bảng Trigger B_
+
+- Thử nghiệm
+```
+INSERT INTO [SanPham] ([TenSanPham], [GiaBan], [MaLoai]) 
+VALUES (N'Cà phê Thử Nghiệm', 20000, 1);
+```
+<img width="1920" height="1080" alt="Screenshot (61)" src="https://github.com/user-attachments/assets/f505d26e-fa73-4302-bc7b-65f19aad9284" />
+
+_Lệnh đã được thực thi thành công mà không xảy ra vấn đề_
+
+#### Nhận xét:
+
+Việc hai Trigger cập nhật qua lại lẫn nhau tạo thành một Đệ quy gián tiếp. Nếu không có điều kiện chặn, nó sẽ làm cạn kiệt tài nguyên hệ thống.
+
+Trong thực tế, việc để hai bảng "soi gương" nhau bằng Trigger là một thiết kế tồi. Nó gây khó khăn cho việc bảo trì và làm chậm hiệu năng đáng kể do mỗi lệnh Update đơn giản đều phải gánh thêm chuỗi giao dịch phức tạp.
+
+# Phần 5: Cursor và Duyệt dữ liệu
+## 5.1. Viết một đoạn script sử dụng CURSOR để duyệt qua danh sách của 1 câu lệnh SQL dạng SELECT, duyệt qua từng bản ghi, xử lý riêng từng bản ghi
+- Duyệt qua danh sách các hóa đơn. Nếu hóa đơn có giá trị > 100,000đ, in thông báo tặng Voucher 20k, ngược lại tặng Voucher 5k
+```
+DECLARE @MaHD INT, @TongTien MONEY;
+
+DECLARE cur_Voucher CURSOR FOR 
+    SELECT [MaHoaDon], SUM([SoLuong] * [GiaBan])
+    FROM [HoaDonChiTiet] H JOIN [SanPham] S ON H.[MaSanPham] = S.[MaSanPham]
+    GROUP BY [MaHoaDon];
+
+OPEN cur_Voucher;
+FETCH NEXT FROM cur_Voucher INTO @MaHD, @TongTien;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    IF @TongTien > 100000
+        PRINT N'Hóa đơn ' + CAST(@MaHD AS NVARCHAR) + N': Tặng Voucher 20.000đ';
+    ELSE
+        PRINT N'Hóa đơn ' + CAST(@MaHD AS NVARCHAR) + N': Tặng Voucher 5.000đ';
+        
+    FETCH NEXT FROM cur_Voucher INTO @MaHD, @TongTien;
+END;
+
+CLOSE cur_Voucher;
+DEALLOCATE cur_Voucher;
+```
+<img width="1920" height="1080" alt="Screenshot (62)" src="https://github.com/user-attachments/assets/2b9eb11c-1731-4795-a2b6-e9322a28b5ed" />
+
+_Các hóa đơn đã được giảm giá theo từng giá trị_
+
+# 5.2. Cách giải quyết KHÔNG dùng Cursor
+```
+SELECT 
+    [MaHoaDon], 
+    SUM([SoLuong] * [GiaBan]) AS [TongTien],
+    CASE 
+        WHEN SUM([SoLuong] * [GiaBan]) > 100000 THEN N'Tặng Voucher 20.000đ'
+        ELSE N'Tặng Voucher 5.000đ'
+    END AS [UuDai]
+FROM [HoaDonChiTiet] H 
+JOIN [SanPham] S ON H.[MaSanPham] = S.[MaSanPham]
+GROUP BY [MaHoaDon];
+```
+<img width="1920" height="1080" alt="Screenshot (63)" src="https://github.com/user-attachments/assets/58e06d34-93d1-4d84-af8c-9acfc68665e0" />
+
+_Không dùng Cursor bài toán vẫn được giải quyết (Dùng CASE WHEN)_
+
+#### Nhận xét về tốc độ:
+
+Cách dùng SELECT luôn nhanh hơn vì nó xử lý cả khối dữ liệu cùng lúc trong bộ nhớ đệm.
+
+Cursor phải mở con trỏ, duyệt từng dòng, tốn tài nguyên hơn rất nhiều khi bảng có hàng triệu dòng.
+
+# 5.3. Viết bài toán mà chỉ CURSOR mới giải quyết được
+Giả sử một khách hàng nợ bạn nhiều lần. Hôm nay, họ đến trả một khoản tiền là 1,000,000 VND.
+
+Yêu cầu: Hệ thống phải tự động trừ vào các khoản nợ cũ nhất trước. Nếu tiền vẫn còn dư, trừ tiếp vào khoản nợ mới hơn cho đến khi hết tiền thì thôi.
+
+Tại sao SQL thuần khó làm? Lệnh `UPDATE` không thể tự biết khi nào thì "hết tiền dư" để dừng lại
+
+```DECLARE @MaKhachHang INT = 1;
+DECLARE @SoTienTra MONEY = 1000000; -- Số tiền khách mang đến
+
+DECLARE @MaNo INT, @SoTienNo MONEY, @SoTienTru MONEY;
+
+-- 1. Cursor duyệt các khoản nợ từ cũ nhất đến mới nhất
+DECLARE cur_No CURSOR FOR 
+    SELECT MaNo, SoTienNo 
+    FROM SoNo 
+    WHERE MaKhachHang = @MaKhachHang AND SoTienNo > 0
+    ORDER BY NgayGhiNo ASC;
+
+OPEN cur_No;
+FETCH NEXT FROM cur_No INTO @MaNo, @SoTienNo;
+
+-- 2. Vòng lặp phân bổ tiền trả nợ
+WHILE @@FETCH_STATUS = 0 AND @SoTienTra > 0
+BEGIN
+    -- Nếu tiền khách trả lớn hơn hoặc bằng khoản nợ hiện tại
+    IF @SoTienTra >= @SoTienNo
+    BEGIN
+        SET @SoTienTru = @SoTienNo; -- Trừ hết sạch khoản nợ này
+    END
+    ELSE
+    BEGIN
+        SET @SoTienTru = @SoTienTra; -- Chỉ trừ được một phần khoản nợ
+    END
+
+    -- Cập nhật bảng SoNo
+    UPDATE SoNo 
+    SET SoTienNo = SoTienNo - @SoTienTru,
+        GhiChu = GhiChu + N' (Đã trả ' + CAST(@SoTienTru AS NVARCHAR) + ')'
+    WHERE MaNo = @MaNo;
+
+    -- Trừ số tiền khách trả còn lại trong tay
+    SET @SoTienTra = @SoTienTra - @SoTienTru;
+
+    -- Lấy khoản nợ tiếp theo
+    FETCH NEXT FROM cur_No INTO @MaNo, @SoTienNo;
+END;
+
+CLOSE cur_No;
+DEALLOCATE cur_No;
+
+-- Thông báo số tiền còn dư nếu khách trả quá nhiều
+IF @SoTienTra > 0
+    PRINT N'Khách hàng đã trả hết nợ, tiền còn dư: ' + CAST(@SoTienTra AS NVARCHAR);
+ELSE
+    PRINT N'Đã phân bổ hết số tiền khách trả vào các khoản nợ.';
+```
+<img width="1920" height="1080" alt="Screenshot (64)" src="https://github.com/user-attachments/assets/24a887a6-8777-45e2-863a-8469a1a47a12" />
+
+_Khách hàng đã trả hết nợ, số tiền dư đã đucợ cập nhật trên hệ thống_
 
 
 
