@@ -300,7 +300,8 @@ DECLARE @MoneyResult MONEY;
 EXEC [sp_DoanhThuTheoNgay] '2026-04-27', @MoneyResult OUTPUT;
 SELECT @MoneyResult AS [DoanhThuNgayHomNay];
 ```
-<img width="1920" height="1080" alt="Screenshot (53)" src="https://github.com/user-attachments/assets/08535497-771a-426c-9613-7a0236ea814c" />
+<img width="1920" height="1080" alt="Screenshot (54)" src="https://github.com/user-attachments/assets/5d98fd90-36cf-4db4-b103-451e11ac8859" />
+
 
 _Doanh thu của quán trong 1 ngày cụ thể_
 
